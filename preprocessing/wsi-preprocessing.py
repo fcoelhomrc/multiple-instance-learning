@@ -130,45 +130,37 @@ class MaskEngine:
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
+    # samples = [
+    #     "TCGA-AG-3587-01Z-00-DX1.0be1e75e-2c95-406e-bece-b9f5e971be80",
+    #     "TCGA-AA-A029-01Z-00-DX1.36BA3129-431D-4AE5-98E6-BA064D0B5062",
+    #     "TCGA-AA-A02W-01Z-00-DX1.3D9DD408-C389-411D-B4AC-6DC531D35BAD"
+    # ]
+
+    # root_dir = os.path.join(os.path.sep, "home", "felipe", "ExternalDrives")
+    # slide_dir = os.path.join(root_dir, "+data")
+    # thumbnail_dir = os.path.join(root_dir, "TCGA_CRC_thumbs", "thumbnails")
+    # mask_dir = os.path.join(root_dir, "TCGA_CRC_thumbs", "mask")
+
     samples = [
-        "TCGA-AG-3587-01Z-00-DX1.0be1e75e-2c95-406e-bece-b9f5e971be80",
-        "TCGA-AA-A029-01Z-00-DX1.36BA3129-431D-4AE5-98E6-BA064D0B5062",
-        "TCGA-AA-A02W-01Z-00-DX1.3D9DD408-C389-411D-B4AC-6DC531D35BAD"
+        "TCGA-QG-A5Z1-01Z-00-DX1.F3157C57-0F35-42D3-9CA5-C72D93F1BF89"
     ]
 
-    root_dir = os.path.join(os.path.sep, "home", "felipe", "ExternalDrives")
-    slide_dir = os.path.join(root_dir, "+data")
-    thumbnail_dir = os.path.join(root_dir, "TCGA_CRC_thumbs", "thumbnails")
-    mask_dir = os.path.join(root_dir, "TCGA_CRC_thumbs", "mask")
+    root_dir = os.path.join("..", "samples", "TCGA")
+    slide_dir = os.path.join(root_dir, "raw")
+    thumbnail_dir = os.path.join(root_dir, "thumbnails")
+    mask_dir = os.path.join(root_dir, "masks")
 
-    test_preprocessing = False
 
-    slide = SlideManager(slide_dir, thumbnail_dir, mask_dir)
-    wsi = slide.get_slide(samples[0])
-    # inspect wsi
-    print(f"level_count", wsi.level_count)
-    print(f"dimensions", wsi.dimensions)
-    print(f"level_dimensions", wsi.level_dimensions)
-    print(f"level_downsamples", wsi.level_downsamples)
-    print(f"properties", wsi.properties)
-    print(f"color_profile", wsi.color_profile)
-    print(f"associated_images", wsi.associated_images)
+    test_preprocessing = True
 
-    tiles, tiles_coordinates = slide.get_tiles(samples[0])
-
-    print(f"number of tiles", len(tiles))
-    count = 0
-    maxtiles = 5
-    fig, axs = plt.subplots(1, maxtiles)
-    while count <= maxtiles:
-        axs[count].imshow(tiles[count])
-        count += 1
-    fig.suptitle("my first TCGA self-made tiles :)")
-    plt.show()
 
     if test_preprocessing:
         for sample in samples:
             slide = SlideManager(slide_dir, thumbnail_dir, mask_dir)
+
+            wsi = open_slide(os.path.join(slide_dir, f"{sample}.svs"))
+            tbn = wsi.get_thumbnail(wsi.level_dimensions[-1])
+            tbn.save(os.path.join(thumbnail_dir, f"{sample}_thumb.png"))
 
             mask = slide.get_mask(sample)
             mask_arr = np.array(mask)
@@ -179,7 +171,6 @@ if __name__ == "__main__":
             proc = MaskEngine(thumbnail)
 
             test = proc.get_mask()
-
             plt.imshow(thumbnail_arr)
             plt.show()
 
