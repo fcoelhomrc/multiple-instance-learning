@@ -3,6 +3,9 @@ import pprint
 
 # set parameters and write to yaml file
 parameters = {
+    'Data': {
+        'mount_point': '/nas-ctm01/partners/IMPDIAGNOSTICS/cadpath/CRC'
+    },
     'Training': {
         'limit_train_batches': 0.10,
         'max_epochs': 10,

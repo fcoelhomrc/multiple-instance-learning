@@ -40,7 +40,7 @@ wandb_logger = WandbLogger(
 print("Loading train data...")
 start = time.perf_counter()
 train_data = CADPATH_CRC_Tiles_Dataset(
-    mount_point="/home/felipe/ExternalDrives",
+    mount_point=parameters['Data']['mount_point'],
     split="tiles-annot-train",
     is_bag=False,
 )
@@ -49,7 +49,7 @@ print(f"Successfully loaded train data! Elapsed: {time.perf_counter() - start:.1
 print("Loading validation data...")
 start = time.perf_counter()
 val_data = CADPATH_CRC_Tiles_Dataset(
-    mount_point="/home/felipe/ExternalDrives",
+    mount_point=parameters['Data']['mount_point'],
     split="tiles-annot-val",
     is_bag=False,
 )
