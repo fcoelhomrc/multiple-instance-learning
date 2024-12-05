@@ -1,4 +1,3 @@
-
 import torch
 import torch.nn as nn
 import torchvision
@@ -22,7 +21,8 @@ class Backbone(L.LightningModule):
         self.preprocessor = self.backbone_weights.transforms()
         self.backbone = torchvision.models.resnet34(weights=self.backbone_weights)
         self.n_features = self.backbone.fc.in_features
-        self.backbone.fc = nn.Linear(self.n_features, self.n_classes)
+        self.backbone.fc = nn.Identity()
+        self.head = nn.Linear(self.n_features, self.n_classes)
 
         match self.user_parameters['Loss_Function']['loss_function']:
             case 'cross_entropy':
@@ -37,14 +37,21 @@ class Backbone(L.LightningModule):
 
     def forward(self, x):
         x_processed = self.preprocessor(x)
-        return self.backbone(x_processed)
+        x_features = self.backbone(x_processed)
+        return self.head(x_features)
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
-            self.backbone.parameters(),
+            [
+                {"params": self.backbone.parameters(),
+                 "name": "backbone"},
+                {"params": self.head.parameters(),
+                 "name": "head"},
+            ],
             lr=self.user_parameters['Optimizer']['lr'],
             weight_decay=self.user_parameters['Optimizer']['weight_decay'],
         )
+
         return optimizer
 
     def training_step(self, train_batch, batch_idx):
@@ -56,7 +63,7 @@ class Backbone(L.LightningModule):
         y_hat = probas.argmax(dim=1)
 
         accuracy = torchmetrics.functional.accuracy(
-            y_hat, y, task='multiclass', num_classes=self.n_classes
+            y_hat, y, task='multiclass', num_classes=self.n_classes,
         )
 
         qwk = torchmetrics.functional.cohen_kappa(
@@ -64,13 +71,9 @@ class Backbone(L.LightningModule):
             weights='quadratic'
         )
 
-        recall = torchmetrics.functional.recall(
-            y_hat, y, task='multiclass', num_classes=self.n_classes,
-        )
 
         self.log("train/loss", loss)  # wandb
         self.log("train/accuracy", accuracy)  # wandb
-        self.log("train/recall", recall)  # wandb
         self.log("train/qwk", qwk)  # wandb
         return loss
 
@@ -83,7 +86,7 @@ class Backbone(L.LightningModule):
         y_hat = probas.argmax(dim=1)
 
         accuracy = torchmetrics.functional.accuracy(
-            y_hat, y, task='multiclass', num_classes=self.n_classes
+            y_hat, y, task='multiclass', num_classes=self.n_classes,
         )
 
         qwk = torchmetrics.functional.cohen_kappa(
@@ -91,13 +94,9 @@ class Backbone(L.LightningModule):
             weights='quadratic'
         )
 
-        recall = torchmetrics.functional.recall(
-            y_hat, y, task='multiclass', num_classes=self.n_classes,
-        )
 
         self.log("val/loss", loss)  # wandb
         self.log("val/accuracy", accuracy)  # wandb
-        self.log("val/recall", recall)  # wandb
         self.log("val/qwk", qwk)  # wandb
 
 
