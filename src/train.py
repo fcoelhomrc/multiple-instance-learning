@@ -2,6 +2,7 @@ import argparse
 import yaml
 import pprint
 import time
+import os
 
 import torch
 import torch.utils.data
@@ -12,6 +13,7 @@ from pytorch_lightning.loggers import WandbLogger
 
 from models import Backbone
 from crc_datasets import CADPATH_CRC_Tiles_Dataset
+from utils import create_directory
 
 
 parser = argparse.ArgumentParser(
@@ -31,9 +33,14 @@ print("Current configuration:")
 pprint.pprint(parameters)
 print("-"*80)
 
+wandb_dir = create_directory(
+    base_name=parameters["Registry"]["name"],
+    root_dir=parameters["Registry"]["wandb_root_dir"],
+)
+
 wandb_logger = WandbLogger(
-    project='debug-runs',
-    save_dir='wandb-outputs',
+    project=parameters["Registry"]["project"],
+    save_dir=os.path.join(str(parameters["Registry"]["wandb_root_dir"]), os.path.basename(wandb_dir)),
     config=parameters,
 )
 
@@ -69,7 +76,7 @@ val_dataloader = torch.utils.data.DataLoader(
 )
 
 callback_model_checkpoint = L.pytorch.callbacks.ModelCheckpoint(
-    dirpath='checkpoints',
+    dirpath=parameters['Registry']['checkpoints_dir'],
     filename='{epoch}',
     monitor='val/loss',
     save_last=True,
@@ -81,10 +88,19 @@ callback_early_stopping = L.pytorch.callbacks.EarlyStopping(
     patience=parameters['Training']['early_stopping_patience'],
 )
 
+callback_backbone_finetuning = L.pytorch.callbacks.BackboneFinetuning(
+    unfreeze_backbone_at_epoch=parameters['Training']['epochs_before_unfreeze'],
+    lambda_func=lambda lr: parameters['Training']['gain_after_unfreeze'],
+    backbone_initial_ratio_lr=parameters['Training']['gain_before_unfreeze'],
+)
+
+callback_learning_rate_monitor = L.pytorch.callbacks.LearningRateMonitor(logging_interval='step')
 
 callbacks = [
     callback_model_checkpoint,
     callback_early_stopping,
+    callback_backbone_finetuning,
+    callback_learning_rate_monitor,
 ]
 
 model = Backbone(n_classes=3, user_parameters=parameters)
