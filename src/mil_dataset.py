@@ -21,11 +21,12 @@ class SlidePatchDataset(Dataset):
         transform (callable, optional): Optional transform to be applied on a patch.
     """
 
-    def __init__(self, root_dir, transform=None):
+    def __init__(self, root_dir, number_of_slides=None, transform=None):
         # Paths to required directories
         self.patches_dir = os.path.join(root_dir, "clam-outputs/patches")
         self.slides_dir = os.path.join(root_dir, "slides")
         self.labels_path = os.path.join(root_dir, "labels.csv")
+        self.number_of_slides = number_of_slides
 
         # Read labels CSV
         self.labels_df = pd.read_csv(self.labels_path)
@@ -46,6 +47,12 @@ class SlidePatchDataset(Dataset):
 
         for h5_file in self.h5_files:
             slide_id = os.path.splitext(os.path.basename(h5_file))[0]
+
+            slide_id_number = int(slide_id.split("_")[1])
+            if self.number_of_slides is not None:
+                if slide_id_number > self.number_of_slides:
+                    break
+
             label = self.slide_labels.get(slide_id)
             if label is None:
                 raise ValueError(f"Slide ID {slide_id} not found in labels CSV.")
@@ -99,7 +106,7 @@ class SlidePatchDataset(Dataset):
         return patch, slide_id, label
 
 
-def process_patch_ranking(model_checkpoint_path, dataset_root, output_dir):
+def process_patch_ranking(model_checkpoint_path, dataset_root, output_dir, number_of_slides):
     """
     Processes patches by ranking them based on a model's predictions and writes the results
     to CSV files.
@@ -123,10 +130,10 @@ def process_patch_ranking(model_checkpoint_path, dataset_root, output_dir):
     transform = transforms.Compose([
         transforms.ToTensor(),
     ])
-    dataset = SlidePatchDataset(root_dir=dataset_root, transform=transform)
+    dataset = SlidePatchDataset(root_dir=dataset_root, number_of_slides=number_of_slides, transform=transform)
 
     # Create DataLoader
-    dataloader = DataLoader(dataset, batch_size=32, shuffle=False, num_workers=0)
+    dataloader = DataLoader(dataset, batch_size=32, shuffle=False, num_workers=4)
 
     # Define class weights (for computing the rank)
     class_weights = [1, 2, 3]
@@ -136,7 +143,7 @@ def process_patch_ranking(model_checkpoint_path, dataset_root, output_dir):
     slide_top5 = {}  # To store top-5 ranked patches for each slide
 
     # Create progress bar
-    pbar = tqdm(total=len(dataset), desc="Processing patches", file=sys.stdout)
+    pbar = tqdm(total=len(dataset), desc="Processing patches", file=sys.stdout, leave=False)
 
     # Iterate over the dataset
     with torch.no_grad():  # Disable gradient computation for evaluation
@@ -223,6 +230,13 @@ if __name__ == "__main__":
         required=True,
         help="Directory where CSV files will be written."
     )
+    parser.add_argument(
+        "--number_of_slides",
+        type=int,
+        required=True,
+        help="Number of slides to be included (sequential)."
+    )
+
 
     # Parse arguments
     args = parser.parse_args()
@@ -232,4 +246,5 @@ if __name__ == "__main__":
         model_checkpoint_path=args.model_checkpoint_path,
         dataset_root=args.dataset_root,
         output_dir=args.output_dir
+        number_of_slides=args.number_of_slides,
     )
