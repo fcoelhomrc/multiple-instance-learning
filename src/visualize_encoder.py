@@ -156,8 +156,8 @@ if __name__ == "__main__":
     )
 
     if args.load_untrained_model:
-        with open(args.config, "r") as yaml_file:
-            parameters = yaml.load(args.parameters, Loader=yaml.FullLoader)
+        with open(args.parameters, "r") as yaml_file:
+            parameters = yaml.load(yaml_file, Loader=yaml.FullLoader)
         print("Current configuration:")
         from pprint import pprint
         pprint(parameters)
