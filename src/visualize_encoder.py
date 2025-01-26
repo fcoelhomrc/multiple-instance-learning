@@ -1,6 +1,6 @@
 import argparse
 import torch
-import os, sys
+import os, sys, yaml
 from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
@@ -10,7 +10,8 @@ from crc_datasets import CADPATH_CRC_Tiles_Dataset
 from models import Backbone  # Import the Backbone class (ensure import path is correct)
 
 
-def visualize_tsne(dataset, num_samples, model_path, output_folder="tsne_visualizations"):
+def visualize_tsne(dataset, num_samples, model_path, output_folder="tsne_visualizations",
+                   load_untrained_model=False, parameters=None):
     """
     Loads a pre-trained model, extracts features using the backbone, and visualizes t-SNE embeddings.
 
@@ -34,7 +35,11 @@ def visualize_tsne(dataset, num_samples, model_path, output_folder="tsne_visuali
         raise ValueError("`num_samples` must be a float between 0 and 1 (exclusive).")
 
     # model = torch.load(model_path, map_location=device)
-    model = Backbone.load_from_checkpoint(model_path)  # Loading directly from .ckpt
+    if not load_untrained_model:
+        model = Backbone.load_from_checkpoint(model_path)  # Loading directly from .ckpt
+    else:
+        model = Backbone(n_classes=3, user_parameters=parameters)
+
     model = model.to(device)
     model.eval()  # Set model to evaluation mode
 
@@ -129,6 +134,17 @@ if __name__ == "__main__":
         help="Path to save the t-SNE scatter plots (default: tsne_visualization.png)."
     )
 
+    parser.add_argument(
+        "--load-untrained-model",
+        default=False,
+        store_true=True,
+    )
+
+    parser.add_argument(
+        "--parameters",
+        default=None,
+    )
+
     # Parse arguments
     args = parser.parse_args()
 
@@ -145,5 +161,7 @@ if __name__ == "__main__":
         dataset=dataset,
         num_samples=args.num_samples,
         model_path=args.model_path,
-        output_folder=args.output_folder
+        output_folder=args.output_folder,
+        load_untrained_model=args.load_untrained_model,
+        parameters=args.parameters,
     )
