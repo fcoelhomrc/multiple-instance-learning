@@ -8,6 +8,8 @@ from PIL import Image
 from torchvision import transforms
 import csv
 from tqdm import tqdm
+import openslide
+
 
 
 class SlidePatchDataset(Dataset):
@@ -63,28 +65,38 @@ class SlidePatchDataset(Dataset):
         return len(self.patches)
 
     def __getitem__(self, idx):
-        # Extract patch information
+        # Extract patch metadata
         patch_info = self.patches[idx]
         h5_file = patch_info["h5_file"]
         patch_index = patch_info["patch_index"]
         slide_id = patch_info["slide_id"]
         label = patch_info["label"]
 
-        # Open the .h5 file and extract the patch
+        # Open the .h5 file and extract the patch coordinates
         with h5py.File(h5_file, "r") as f:
-            coords = f["coords"]
-            patch_data = f["patches"][patch_index]
+            coords = f["coords"]  # (N, 2) array of coordinates
+            coord = coords[patch_index]  # Get the top-left coordinate (x, y) for the patch
 
-        # Convert numpy array to PIL image
-        patch = Image.fromarray(patch_data)
+        # The slide image is stored in the 'slides' directory as a `.svs` file
+        slide_path = os.path.join(self.slides_dir, f"{slide_id}.svs")
 
-        # Apply optional transform
+        # Open the slide using OpenSlide and read the region corresponding to the patch
+        slide = openslide.OpenSlide(slide_path)
+        x, y = coord  # Extract top-left corner from the h5 file's coords
+        patch_data = slide.read_region((int(x), int(y)), 0, (256, 256))  # Level 0, patch size (256x256)
+
+        # Convert the patch to RGB mode (if necessary)
+        patch = patch_data.convert("RGB")
+
+        # Apply optional transformations to the patch
         if self.transform:
             patch = self.transform(patch)
 
+        # Close the slide to release resources
+        slide.close()
+
         # Return the patch, slide ID, and label
         return patch, slide_id, label
-
 
 
 def process_patch_ranking(model_checkpoint_path, dataset_root, output_dir):
