@@ -245,6 +245,6 @@ if __name__ == "__main__":
     process_patch_ranking(
         model_checkpoint_path=args.model_checkpoint_path,
         dataset_root=args.dataset_root,
-        output_dir=args.output_dir
+        output_dir=args.output_dir,
         number_of_slides=args.number_of_slides,
     )
