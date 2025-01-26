@@ -1,3 +1,4 @@
+import argparse
 import torch
 from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
@@ -74,3 +75,47 @@ def visualize_tsne(dataset, num_samples, model_path, output_path="tsne_visualiza
 
 # Example usage:
 # visualize_tsne(torch_dataset, 0.1, "/path/to/saved_model.pth", "output_plot.png")
+
+
+if __name__ == "__main__":
+    # Set up argument parser
+    parser = argparse.ArgumentParser(description="t-SNE visualization of model embeddings.")
+
+    # Define required arguments
+    parser.add_argument(
+        "--dataset",
+        required=True,
+        help="Path to the dataset (should be a PyTorch dataset)."
+    )
+    parser.add_argument(
+        "--num_samples",
+        type=float,
+        required=True,
+        help="Fraction of dataset to sample (must be a float between 0.0 and 1.0)."
+    )
+    parser.add_argument(
+        "--model_path",
+        required=True,
+        help="Path to the saved PyTorch model."
+    )
+    parser.add_argument(
+        "--output_path",
+        default="tsne_visualization.png",
+        help="Path to save the t-SNE scatter plot (default: tsne_visualization.png)."
+    )
+
+    # Parse arguments
+    args = parser.parse_args()
+
+    # Load dataset
+    # This assumes the dataset is a PyTorch dataset object. Depending on your specific dataset, adapt loading accordingly.
+    # Example: Replace with logic for loading a dataset if needed
+    dataset = torch.load(args.dataset)  # Simulated dataset loading placeholder
+
+    # Call the t-SNE visualization function
+    visualize_tsne(
+        dataset=dataset,
+        num_samples=args.num_samples,
+        model_path=args.model_path,
+        output_path=args.output_path
+    )
