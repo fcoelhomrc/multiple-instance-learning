@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader
 import numpy as np
 from tqdm import tqdm
 from crc_datasets import CADPATH_CRC_Tiles_Dataset
+from models import Backbone  # Import the Backbone class (ensure import path is correct)
 
 
 def visualize_tsne(dataset, num_samples, model_path, output_path="tsne_visualization.png"):
@@ -28,7 +29,9 @@ def visualize_tsne(dataset, num_samples, model_path, output_path="tsne_visualiza
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Load the saved model
-    model = torch.load(model_path, map_location=device)
+    # model = torch.load(model_path, map_location=device)
+    model = Backbone.load_from_checkpoint(model_path)  # Loading directly from .ckpt
+    model = model.to(device)
     model.eval()  # Set model to evaluation mode
 
     # Randomly sample dataset
