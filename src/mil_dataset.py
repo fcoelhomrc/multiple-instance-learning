@@ -45,12 +45,12 @@ class SlidePatchDataset(Dataset):
         self.patches = []
         self.transform = transform
 
-        for h5_file in self.h5_files:
+        for h5_file_idx, h5_file in enumerate(self.h5_files):
             slide_id = os.path.splitext(os.path.basename(h5_file))[0]
 
             slide_id_number = int(slide_id.split("_")[1])
             if self.number_of_slides is not None:
-                if slide_id_number > self.number_of_slides:
+                if h5_file_idx > self.number_of_slides:
                     break
 
             label = self.slide_labels.get(slide_id)
@@ -136,7 +136,7 @@ def process_patch_ranking(model_checkpoint_path, dataset_root, output_dir, numbe
     dataloader = DataLoader(dataset, batch_size=32, shuffle=False, num_workers=4)
 
     # Define class weights (for computing the rank)
-    class_weights = [1, 2, 3]
+    class_weights = [0, 1, 2]
 
     # Create buffers to store results
     global_results = []  # To store all patches with their ranks
