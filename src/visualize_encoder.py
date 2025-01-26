@@ -1,5 +1,6 @@
 import argparse
 import torch
+import os, sys
 from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
@@ -9,7 +10,7 @@ from crc_datasets import CADPATH_CRC_Tiles_Dataset
 from models import Backbone  # Import the Backbone class (ensure import path is correct)
 
 
-def visualize_tsne(dataset, num_samples, model_path, output_path="tsne_visualization.png"):
+def visualize_tsne(dataset, num_samples, model_path, output_folder="tsne_visualizations"):
     """
     Loads a pre-trained model, extracts features using the backbone, and visualizes t-SNE embeddings.
 
@@ -22,13 +23,14 @@ def visualize_tsne(dataset, num_samples, model_path, output_path="tsne_visualiza
     Returns:
         None. Saves the t-SNE visualization as a .png file.
     """
-    # Safety check for the number of samples parameter
-    if not (0.0 < num_samples <= 1.0):
-        raise ValueError("`num_samples` must be a float between 0 and 1 (exclusive).")
+
+    # Ensure output folder exists
+    os.makedirs(output_folder, exist_ok=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Load the saved model
+    # Safety check for the number of samples parameter
+    if not (0.0 < num_samples <= 1.0):
     # model = torch.load(model_path, map_location=device)
     model = Backbone.load_from_checkpoint(model_path)  # Loading directly from .ckpt
     model = model.to(device)
@@ -42,7 +44,7 @@ def visualize_tsne(dataset, num_samples, model_path, output_path="tsne_visualiza
     loader = DataLoader(sampled_dataset, batch_size=32, shuffle=False)
 
     # Extract features and labels
-    pbar = tqdm(total=subset_size, desc="Extracting features")
+    pbar = tqdm(total=subset_size, desc="Extracting features", file=sys.stdout)
     features = []
     labels = []
     with torch.no_grad():
@@ -59,29 +61,40 @@ def visualize_tsne(dataset, num_samples, model_path, output_path="tsne_visualiza
     features = np.vstack(features)
     labels = np.concatenate(labels)
 
-    # Perform t-SNE on features
-    print("Training TSNE... This may take a while...")
-    tsne = TSNE(n_components=2, random_state=42)
-    tsne_features = tsne.fit_transform(features)
+    # Define t-SNE perplexity values (10 different values)
+    perplexities = [5, 10, 20, 30, 40, 50, 60, 70, 80, 100]
 
-    # Plot t-SNE visualization, grouped by class
-    print("Plotting the results!")
-    plt.figure(figsize=(10, 8))
-    for class_index in np.unique(labels):
-        class_mask = labels == class_index
-        plt.scatter(
-            tsne_features[class_mask, 0],
-            tsne_features[class_mask, 1],
-            label=f"Class {class_index}",
-            alpha=0.6
-        )
-    plt.title("t-SNE Visualization of Backbone Features")
-    plt.xlabel("t-SNE Component 1")
-    plt.ylabel("t-SNE Component 2")
-    plt.legend()
-    plt.grid(True)
-    plt.savefig(output_path)
-    plt.close()
+    pbar = tqdm(total=len(perplexities), desc="Training TSNE...", file=sys.stdout)
+    # Generate t-SNE plots for each perplexity
+    for perplexity in perplexities:
+        # Perform t-SNE on features with the current perplexity
+        tsne = TSNE(n_components=2, perplexity=perplexity, random_state=42)
+        tsne_features = tsne.fit_transform(features)
+
+        # Plot t-SNE visualization, grouped by class
+        plt.figure(figsize=(10, 8))
+        for class_index in np.unique(labels):
+            class_mask = labels == class_index
+            plt.scatter(
+                tsne_features[class_mask, 0],
+                tsne_features[class_mask, 1],
+                label=f"Class {class_index}",
+                alpha=0.6
+            )
+        plt.title(f"t-SNE Visualization (Perplexity={perplexity})")
+        plt.xlabel("t-SNE Component 1")
+        plt.ylabel("t-SNE Component 2")
+        plt.legend()
+        plt.grid(True)
+
+        # Save the plot to the output folder
+        output_path = os.path.join(output_folder, f"tsne_perplexity_{perplexity}.png")
+        plt.savefig(output_path)
+        plt.close()
+
+        pbar.update()
+
+    print(f"t-SNE visualizations saved to folder: {output_folder}")
 
 # Example usage:
 # visualize_tsne(torch_dataset, 0.1, "/path/to/saved_model.pth", "output_plot.png")
@@ -109,9 +122,9 @@ if __name__ == "__main__":
         help="Path to the saved PyTorch model."
     )
     parser.add_argument(
-        "--output_path",
-        default="tsne_visualization.png",
-        help="Path to save the t-SNE scatter plot (default: tsne_visualization.png)."
+        "--output_folder",
+        default="tsne_visualization",
+        help="Path to save the t-SNE scatter plots (default: tsne_visualization.png)."
     )
 
     # Parse arguments
@@ -130,5 +143,5 @@ if __name__ == "__main__":
         dataset=dataset,
         num_samples=args.num_samples,
         model_path=args.model_path,
-        output_path=args.output_path
+        output_folder=args.output_folder
     )
