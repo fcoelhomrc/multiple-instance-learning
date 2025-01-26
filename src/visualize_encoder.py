@@ -31,6 +31,8 @@ def visualize_tsne(dataset, num_samples, model_path, output_folder="tsne_visuali
 
     # Safety check for the number of samples parameter
     if not (0.0 < num_samples <= 1.0):
+        raise ValueError("`num_samples` must be a float between 0 and 1 (exclusive).")
+
     # model = torch.load(model_path, map_location=device)
     model = Backbone.load_from_checkpoint(model_path)  # Loading directly from .ckpt
     model = model.to(device)
