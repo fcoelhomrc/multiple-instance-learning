@@ -136,8 +136,7 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--load-untrained-model",
-        default=False,
-        store_true=True,
+        action="store_true",
     )
 
     parser.add_argument(
