@@ -114,7 +114,7 @@ def process_patch_ranking(model_checkpoint_path, dataset_root, output_dir):
     dataset = SlidePatchDataset(root_dir=dataset_root, transform=transform)
 
     # Create DataLoader
-    dataloader = DataLoader(dataset, batch_size=32, shuffle=False, num_workers=4)
+    dataloader = DataLoader(dataset, batch_size=32, shuffle=False, num_workers=0)
 
     # Define class weights (for computing the rank)
     class_weights = [1, 2, 3]
