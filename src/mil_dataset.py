@@ -178,6 +178,7 @@ def process_patch_ranking(model_checkpoint_path, dataset_root, output_dir, numbe
 
             # Update the progress bar with current slide and average rank
             pbar.set_postfix(slide_id=slide_ids[0], avg_rank=ranks.mean().item())
+            pbar.refresh()
             # Process the batch and update results...
             pbar.update(len(patches))  # Update progress bar
 
