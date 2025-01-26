@@ -4,6 +4,8 @@ from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 import numpy as np
+from tqdm import tqdm
+from crc_datasets import CADPATH_CRC_Tiles_Dataset
 
 
 def visualize_tsne(dataset, num_samples, model_path, output_path="tsne_visualization.png"):
@@ -37,6 +39,7 @@ def visualize_tsne(dataset, num_samples, model_path, output_path="tsne_visualiza
     loader = DataLoader(sampled_dataset, batch_size=32, shuffle=False)
 
     # Extract features and labels
+    pbar = tqdm(total=subset_size, desc="Extracting features")
     features = []
     labels = []
     with torch.no_grad():
@@ -46,16 +49,20 @@ def visualize_tsne(dataset, num_samples, model_path, output_path="tsne_visualiza
             backbone_features = model.backbone(x)  # Get 512-dimensional features from the backbone
             features.append(backbone_features.cpu().numpy())
             labels.append(y.numpy())
+            pbar.update(x.size(0))
+    pbar.close()
 
     # Stack features and labels
     features = np.vstack(features)
     labels = np.concatenate(labels)
 
     # Perform t-SNE on features
+    print("Training TSNE... This may take a while...")
     tsne = TSNE(n_components=2, random_state=42)
     tsne_features = tsne.fit_transform(features)
 
     # Plot t-SNE visualization, grouped by class
+    print("Plotting the results!")
     plt.figure(figsize=(10, 8))
     for class_index in np.unique(labels):
         class_mask = labels == class_index
@@ -85,7 +92,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dataset",
         required=True,
-        help="Path to the dataset (should be a PyTorch dataset)."
+        help="Dataset mount point"
     )
     parser.add_argument(
         "--num_samples",
@@ -108,9 +115,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Load dataset
-    # This assumes the dataset is a PyTorch dataset object. Depending on your specific dataset, adapt loading accordingly.
-    # Example: Replace with logic for loading a dataset if needed
-    dataset = torch.load(args.dataset)  # Simulated dataset loading placeholder
+
+    dataset = CADPATH_CRC_Tiles_Dataset(
+        mount_point=args.dataset,
+        split="tiles-annot-train",
+        is_bag=False,
+    )
 
     # Call the t-SNE visualization function
     visualize_tsne(
