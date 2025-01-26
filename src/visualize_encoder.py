@@ -155,6 +155,13 @@ if __name__ == "__main__":
         is_bag=False,
     )
 
+    if args.load_untrained_model:
+        with open(args.config, "r") as yaml_file:
+            parameters = yaml.load(args.parameters, Loader=yaml.FullLoader)
+        print("Current configuration:")
+        from pprint import pprint
+        pprint(parameters)
+
     # Call the t-SNE visualization function
     visualize_tsne(
         dataset=dataset,
@@ -162,5 +169,5 @@ if __name__ == "__main__":
         model_path=args.model_path,
         output_folder=args.output_folder,
         load_untrained_model=args.load_untrained_model,
-        parameters=args.parameters,
+        parameters=parameters,
     )
