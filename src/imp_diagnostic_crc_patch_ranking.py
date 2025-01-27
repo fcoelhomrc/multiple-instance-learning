@@ -4,7 +4,6 @@ import numpy as np
 import h5py
 from torch.utils.data import Dataset, DataLoader
 import pandas as pd
-from PIL import Image
 from torchvision import transforms
 import csv
 from tqdm import tqdm
@@ -12,7 +11,7 @@ import openslide
 
 
 
-class SlidePatchDataset(Dataset):
+class PatchesFromSlideDataset(Dataset):
     """
     A PyTorch Dataset that extracts patches from .h5 files and assigns labels based on the slides.
 
@@ -21,12 +20,13 @@ class SlidePatchDataset(Dataset):
         transform (callable, optional): Optional transform to be applied on a patch.
     """
 
-    def __init__(self, root_dir, number_of_slides=None, transform=None):
+    def __init__(self, root_dir, num_slides=None, patch_size=512, transform=None):
         # Paths to required directories
         self.patches_dir = os.path.join(root_dir, "clam-outputs/patches")
         self.slides_dir = os.path.join(root_dir, "slides")
         self.labels_path = os.path.join(root_dir, "labels.csv")
-        self.number_of_slides = number_of_slides
+        self.num_slides = num_slides
+        self.patch_size = patch_size
 
         # Read labels CSV
         self.labels_df = pd.read_csv(self.labels_path)
@@ -43,14 +43,18 @@ class SlidePatchDataset(Dataset):
 
         # Collect all patches and their corresponding slide and labels
         self.patches = []
-        self.transform = transform
+        if transform:
+            self.transform = transform
+        else:
+            self.transform = transforms.Compose([
+                transforms.ToTensor(),
+            ])
 
         for h5_file_idx, h5_file in enumerate(self.h5_files):
             slide_id = os.path.splitext(os.path.basename(h5_file))[0]
 
-            slide_id_number = int(slide_id.split("_")[1])
-            if self.number_of_slides is not None:
-                if h5_file_idx > self.number_of_slides:
+            if self.num_slides is not None:
+                if h5_file_idx > self.num_slides:
                     break
 
             label = self.slide_labels.get(slide_id)
@@ -60,10 +64,10 @@ class SlidePatchDataset(Dataset):
             with h5py.File(h5_file, "r") as f:
                 coords = f["coords"]
                 # Iterate through each patch
-                for i in range(coords.shape[0]):
+                for patch_id, coord in enumerate(coords):
                     self.patches.append({
-                        "h5_file": h5_file,
-                        "patch_index": i,
+                        "coords": coord,
+                        "patch_id": patch_id,
                         "slide_id": slide_id,
                         "label": label
                     })
@@ -74,39 +78,33 @@ class SlidePatchDataset(Dataset):
     def __getitem__(self, idx):
         # Extract patch metadata
         patch_info = self.patches[idx]
-        h5_file = patch_info["h5_file"]
-        patch_index = patch_info["patch_index"]
+        coords = patch_info["coords"]
+        patch_id = patch_info["patch_id"]
         slide_id = patch_info["slide_id"]
         label = patch_info["label"]
-
-        # Open the .h5 file and extract the patch coordinates
-        with h5py.File(h5_file, "r") as f:
-            coords = f["coords"]  # (N, 2) array of coordinates
-            coord = coords[patch_index]  # Get the top-left coordinate (x, y) for the patch
 
         # The slide image is stored in the 'slides' directory as a `.svs` file
         slide_path = os.path.join(self.slides_dir, f"{slide_id}.svs")
 
         # Open the slide using OpenSlide and read the region corresponding to the patch
         slide = openslide.OpenSlide(slide_path)
-        x, y = coord  # Extract top-left corner from the h5 file's coords
-        patch_data = slide.read_region((int(x), int(y)), 0, (256, 256))  # Level 0, patch size (256x256)
-
-        # Convert the patch to RGB mode (if necessary)
-        patch = patch_data.convert("RGB")
+        x, y = coords  # Extract top-left corner from the h5 file's coords
+        patch_data = slide.read_region(
+            (int(x), int(y)), 0, (self.patch_size, self.patch_size)
+        ).convert("RGB")
 
         # Apply optional transformations to the patch
         if self.transform:
-            patch = self.transform(patch)
+            patch_data = self.transform(patch_data)
 
         # Close the slide to release resources
         slide.close()
 
         # Return the patch, slide ID, and label
-        return patch, slide_id, label
+        return patch_data, coords, self.patch_size, patch_id, slide_id, label
 
 
-def process_patch_ranking(model_checkpoint_path, dataset_root, output_dir, number_of_slides):
+def process_patch_ranking(model_checkpoint_path, dataset_root, output_dir, num_slides):
     """
     Processes patches by ranking them based on a model's predictions and writes the results
     to CSV files.
@@ -115,6 +113,7 @@ def process_patch_ranking(model_checkpoint_path, dataset_root, output_dir, numbe
         model_checkpoint_path (str): Path to the Backbone model checkpoint.
         dataset_root (str): Root path to instantiate the SlidePatchDataset.
         output_dir (str): Directory where CSV files will be written.
+        num_slides: Number of slides to be processed.
     """
     # Ensure output directory exists
     os.makedirs(output_dir, exist_ok=True)
@@ -126,14 +125,14 @@ def process_patch_ranking(model_checkpoint_path, dataset_root, output_dir, numbe
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    # Create SlidePatchDataset
+    # Create dataset
     transform = transforms.Compose([
         transforms.ToTensor(),
     ])
-    dataset = SlidePatchDataset(root_dir=dataset_root, number_of_slides=number_of_slides, transform=transform)
+    dataset = PatchesFromSlideDataset(root_dir=dataset_root, num_slides=num_slides, transform=transform)
 
     # Create DataLoader
-    dataloader = DataLoader(dataset, batch_size=32, shuffle=False, num_workers=4)
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=4)
 
     # Define class weights (for computing the rank)
     class_weights = [0, 1, 2]
@@ -147,40 +146,43 @@ def process_patch_ranking(model_checkpoint_path, dataset_root, output_dir, numbe
 
     # Iterate over the dataset
     with torch.no_grad():  # Disable gradient computation for evaluation
-        for batch_idx, (patches, slide_ids, labels) in enumerate(dataloader):
-            patches = patches.to(device)
+        for batch_idx, (patch, coords, patch_size, patch_id, slide_id, label) in enumerate(dataloader):
+            patch = patch.to(device)
 
             # Compute probabilities using the model
-            probabilities = torch.nn.functional.softmax(model(patches), dim=-1)
+            probabilities = torch.nn.functional.softmax(model(patch), dim=-1)
 
             # Compute rank for each patch
-            ranks = torch.sum(probabilities * torch.tensor(class_weights, device=device), dim=-1).cpu().numpy()
+            rank = torch.sum(probabilities * torch.tensor(class_weights, device=device), dim=-1).cpu().numpy()
 
             # Process each patch in the batch
-            for idx, (rank, slide_id, label) in enumerate(zip(ranks, slide_ids, labels)):
-                global_results.append({
-                    "patch_index": batch_idx * len(patches) + idx,
-                    "slide": slide_id,
-                    "label": int(label),
-                    "rank": float(rank)
-                })
+            global_results.append({
+                "coords": coords,
+                "patch_size": patch_size,
+                "patch_id": patch_id,
+                "slide_id": slide_id,
+                "label": int(label),
+                "rank": float(rank)
+            })
 
-                # Maintain top-5 ranked patches for each slide
-                if slide_id not in slide_top5:
-                    slide_top5[slide_id] = []
+            # Maintain top-5 ranked patches for each slide
+            if slide_id not in slide_top5:
+                slide_top5[slide_id] = []
 
-                slide_top5[slide_id].append({
-                    "patch_index": batch_idx * len(patches) + idx,
-                    "slide": slide_id,
-                    "label": int(label),
-                    "rank": float(rank)
-                })
+            slide_top5[slide_id].append({
+                "coords": coords,
+                "patch_size": patch_size,
+                "patch_id": patch_id,
+                "slide_id": slide_id,
+                "label": int(label),
+                "rank": float(rank)
+            })
 
             # Update the progress bar with current slide and average rank
-            pbar.set_postfix(slide_id=slide_ids[0], avg_rank=ranks.mean().item())
+            pbar.set_postfix(slide_id=slide_id, avg_rank=rank.item())
             pbar.refresh()
             # Process the batch and update results...
-            pbar.update(len(patches))  # Update progress bar
+            pbar.update()  # Update progress bar
 
     # Sort patches in each slide by rank and keep top 5 per slide
     slide_top5_sorted = {}
@@ -232,7 +234,7 @@ if __name__ == "__main__":
         help="Directory where CSV files will be written."
     )
     parser.add_argument(
-        "--number_of_slides",
+        "--num_slides",
         type=int,
         required=True,
         help="Number of slides to be included (sequential)."
@@ -247,5 +249,5 @@ if __name__ == "__main__":
         model_checkpoint_path=args.model_checkpoint_path,
         dataset_root=args.dataset_root,
         output_dir=args.output_dir,
-        number_of_slides=args.number_of_slides,
+        num_slides=args.num_slides,
     )
