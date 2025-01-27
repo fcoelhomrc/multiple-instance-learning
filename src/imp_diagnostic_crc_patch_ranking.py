@@ -162,7 +162,7 @@ def process_patch_ranking(model_checkpoint_path, dataset_root, output_dir, num_s
                 "patch_id": patch_id,
                 "slide_id": slide_id,
                 "label": int(label),
-                "rank": float(rank)
+                "rank": float(rank.mean().item())
             })
 
             # Maintain top-5 ranked patches for each slide
@@ -175,7 +175,7 @@ def process_patch_ranking(model_checkpoint_path, dataset_root, output_dir, num_s
                 "patch_id": patch_id,
                 "slide_id": slide_id,
                 "label": int(label),
-                "rank": float(rank)
+                "rank": float(rank.mean().item())
             })
 
             # Update the progress bar with current slide and average rank
