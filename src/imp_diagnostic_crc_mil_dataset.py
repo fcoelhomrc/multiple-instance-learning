@@ -17,6 +17,11 @@ def precompute_embeddings(root_dir, model_checkpoint, output_dir, num_slides=Non
     model = torch.from_checkpoint(model_checkpoint).to(device)
     model.eval()
 
+    if not hasattr(model, "preprocessor"):
+        raise ValueError("Model must have a preprocessor module.")
+    if not hasattr(model, "backbone"):
+        raise ValueError("Model must have a backbone module.")
+
     mil_dataset = MILDataset(root_dir, num_slides=num_slides, patch_size=patch_size)
     dataloader = DataLoader(mil_dataset, batch_size=1, shuffle=False)
 
@@ -31,7 +36,8 @@ def precompute_embeddings(root_dir, model_checkpoint, output_dir, num_slides=Non
             slide_id = slide_id
         patches = patches.to(device)
         with torch.no_grad():
-            embeddings = model(patches)
+            preprocessed = model.preprocessor(patches)
+            embeddings = model.backbone(preprocessed)
         embeddings = embeddings.cpu().numpy()
         embedding_dataset.append(embeddings)
         pbar.update()
