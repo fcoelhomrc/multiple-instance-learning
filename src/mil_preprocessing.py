@@ -36,7 +36,7 @@ def precompute_embeddings(
     assert os.path.exists(encoder_file)
     # TODO: this should be generic. We can have torch, lightning, or hugging face models...
     from models import Backbone
-    encoder = Backbone.from_pretrained(encoder_file)
+    encoder = Backbone.load_from_checkpoint(encoder_file)
     encoder.eval()
     encoder = encoder.to(device)
 
