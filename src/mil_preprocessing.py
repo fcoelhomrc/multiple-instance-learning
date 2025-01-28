@@ -47,16 +47,18 @@ def precompute_embeddings(
     encoder = encoder.to(device)
 
     logger.info(f"Computing embeddings...")
-    count = 0
+    count_slides = 0
     for i in range(len(dataset)):  # iterate over slides
+        count_patches = 0
         slide_id = dataset.get_slide_id(i)
-        count += 1
+        num_patches = dataset.get_num_patches(i)
+        count_slides += 1
         if auto_skip and os.path.exists(os.path.join(output_path, f"{slide_id}.pt")):
             logger.info(f"Embeddings for {slide_id} are already present in {output_path},"
-                        f" skipping... ({count}/{len(dataset)}) ...")
+                        f" skipping... ({count_slides}/{len(dataset)}) ...")
             continue
         else:
-            logger.info(f"Processing slide {slide_id} ({count}/{len(dataset)}) ...")
+            logger.info(f"Processing slide {slide_id} ({count_slides}/{len(dataset)}) ...")
 
         patch_generator = dataset.get_patch_generator(i)
         buffer = []
@@ -70,6 +72,8 @@ def precompute_embeddings(
                 with torch.no_grad():
                     batch_embedding = encoder(batch)
                 embeddings.append(batch_embedding)
+                logger.info(f"-- Slide: {slide_id}, Patch: {count_patches}/{num_patches}")
+                count_patches += len(buffer)
                 buffer.clear()
 
         if len(buffer) > 0:
@@ -78,11 +82,14 @@ def precompute_embeddings(
             with torch.no_grad():
                 batch_embedding = encoder(batch)
             embeddings.append(batch_embedding)
+            logger.info(f"...Patch: {count_patches}/{num_patches}")
+            count_patches += len(buffer)
             buffer.clear()
 
         embeddings = torch.cat(embeddings, dim=0)
-        logger.info(f"Saving embeddings at {os.path.join(output_path, f'{slide_id}.pt')}...")
-        torch.save(embeddings, os.path.join(output_path, f"{slide_id}.pt"))
+        output_file = os.path.join(output_path, f'{slide_id}.pt')
+        logger.info(f"Saving embeddings at {output_file}...")
+        torch.save(embeddings, output_file)
         del embeddings  # free some space before next iter
 
 

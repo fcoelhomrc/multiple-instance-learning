@@ -57,6 +57,8 @@ class PatchImageDataset:
                         "slide_path": os.path.join(root, name),
                         "patch_path": os.path.join(self.patches_dir, f"{slide_id}.h5"),
                         "label": self.labels.loc[self.labels["slide_id"] == slide_id, "label"].values[0],
+                        "num_patches": self.check_num_patches(os.path.join(self.patches_dir, f"{slide_id}.h5"))
+                        # TODO: not optimal, because we need to re-open the .h5 file later
                     }
                 )
 
@@ -73,32 +75,16 @@ class PatchImageDataset:
         with h5py.File(patch_path, "r") as f:
             patch_coords = f["coords"][:]
 
-        # patches = []
         with openslide.OpenSlide(slide_path) as slide:
             for coord in patch_coords:
                 patch = self.process_slide(slide, coord, self.level, self.patch_size)
                 patch = self.transforms(patch)
-                # patches.append(patch)
                 output = {
                     "slide_id": slide_id,
                     "patch": patch,
                     "label": label,
                 }
                 yield output
-        # patches = torch.stack(patches)
-
-        # patch_metadata = {
-        #     "patch_coords": patch_coords,
-        #     "patch_size": self.patch_size,
-        #     "level": self.level,
-        # }
-        # output = {
-        #     "slide_id": slide_id,
-        #     "patches": patches,
-        #     "label": label,
-        #     # "patch_metadata": patch_metadata,  #TODO: disabled patch metadata for now
-        # }
-        # return output
 
     @staticmethod
     def process_slide(slide, coord, level, patch_size):
@@ -118,6 +104,12 @@ class PatchImageDataset:
             raise FileNotFoundError(f"Patch file not found: {patch_path}")
 
     @staticmethod
+    def check_num_patches(patch_path):
+        with h5py.File(patch_path, "r") as f:
+            num_patches = f["coords"].shape[0]
+        return num_patches
+
+    @staticmethod
     def setup_transforms(transforms):
         # TODO: data augmentation logic
         return torchvision.transforms.Compose([
@@ -127,6 +119,9 @@ class PatchImageDataset:
     def get_slide_id(self, idx):
         return self.slide_info[idx]["slide_id"]
 
+    def get_num_patches(self, idx):
+        return self.slide_info[idx]["num_patches"]
+
 
 if __name__ == "__main__":
     dataset = PatchImageDataset(
@@ -134,6 +129,7 @@ if __name__ == "__main__":
         patch_size=512,
         level=0
     )
+
 
     def plot_random_samples_from_tensor(tensor, num_samples):
         import matplotlib.pyplot as plt
@@ -154,6 +150,7 @@ if __name__ == "__main__":
                 ax.axis("off")
         plt.tight_layout()
         plt.show()
+
 
     for i in range(len(dataset)):  # iterate over slides
         patch_generator = dataset.get_patch_generator(i)
