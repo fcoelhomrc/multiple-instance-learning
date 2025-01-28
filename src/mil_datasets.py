@@ -6,6 +6,7 @@ from torch.utils.data import Dataset
 import torchvision.transforms
 import openslide
 import h5py
+from tqdm import tqdm
 
 
 # Assumes structure
@@ -15,11 +16,11 @@ import h5py
 # --- patches
 
 
-class PatchImageDataset(Dataset):
+class PatchImageDataset:
     def __init__(
             self,
             root_dir,
-            patch_size=256,
+            patch_size=512,
             level=0,
             transforms=None,
     ):
@@ -62,7 +63,7 @@ class PatchImageDataset(Dataset):
     def __len__(self):
         return len(self.slide_info)
 
-    def __getitem__(self, idx):
+    def get_patch_generator(self, idx):
         slide_info = self.slide_info[idx]
         slide_id = slide_info["slide_id"]
         slide_path = slide_info["slide_path"]
@@ -72,35 +73,41 @@ class PatchImageDataset(Dataset):
         with h5py.File(patch_path, "r") as f:
             patch_coords = f["coords"][:]
 
-        patches = []
-        for coord in patch_coords:
-            patch = self.process_slide(slide_path, coord, self.level, self.patch_size)
-            patch = self.transforms(patch)
-            patches.append(patch)
-        patches = torch.stack(patches)
+        # patches = []
+        with openslide.OpenSlide(slide_path) as slide:
+            for coord in patch_coords:
+                patch = self.process_slide(slide, coord, self.level, self.patch_size)
+                patch = self.transforms(patch)
+                # patches.append(patch)
+                output = {
+                    "slide_id": slide_id,
+                    "patch": patch,
+                    "label": label,
+                }
+                yield output
+        # patches = torch.stack(patches)
 
-        patch_metadata = {
-            "patch_coords": patch_coords,
-            "patch_size": self.patch_size,
-            "level": self.level,
-        }
-        output = {
-            "slide_id": slide_id,
-            "patches": patches,
-            "label": label,
-            "patch_metadata": patch_metadata,
-        }
-        return output
+        # patch_metadata = {
+        #     "patch_coords": patch_coords,
+        #     "patch_size": self.patch_size,
+        #     "level": self.level,
+        # }
+        # output = {
+        #     "slide_id": slide_id,
+        #     "patches": patches,
+        #     "label": label,
+        #     # "patch_metadata": patch_metadata,  #TODO: disabled patch metadata for now
+        # }
+        # return output
 
     @staticmethod
-    def process_slide(slide_path, coord, level, patch_size):
+    def process_slide(slide, coord, level, patch_size):
         x, y = coord
-        with openslide.OpenSlide(slide_path) as slide:
-            patch = slide.read_region(
-                location=(x, y),
-                level=level,
-                size=(patch_size, patch_size)
-            ).convert("RGB")
+        patch = slide.read_region(
+            location=(x, y),
+            level=level,
+            size=(patch_size, patch_size)
+        ).convert("RGB")
         return patch
 
     @staticmethod
@@ -117,18 +124,45 @@ class PatchImageDataset(Dataset):
             torchvision.transforms.ToTensor(),
         ])
 
+    def get_slide_id(self, idx):
+        return self.slide_info[idx]["slide_id"]
 
 
 if __name__ == "__main__":
     dataset = PatchImageDataset(
         root_dir="/home/felipe/Projects/multiple-instance-learning/debug/dummy_data",
-        patch_size=256,
+        patch_size=512,
         level=0
     )
-    from torch.utils.data import DataLoader
 
-    dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
-    batch = next(iter(dataloader))
-    print(batch["slide_id"])
-    print(batch["patches"].shape)
-    print(batch["label"])
+    def plot_random_samples_from_tensor(tensor, num_samples):
+        import matplotlib.pyplot as plt
+        import numpy as np
+        assert len(tensor.shape) == 4, "Tensor must have shape (Batch, Channels, Height, Width)"
+        batch_size, channels, height, width = tensor.shape
+        grid_size = int(np.ceil(np.sqrt(batch_size)))  # Size of the grid (rows/cols)
+        fig, axes = plt.subplots(grid_size, grid_size, figsize=(10, 10))
+        axes = axes.flatten()
+        for i, ax in enumerate(axes):
+            if i < num_samples:
+                # Convert tensor picture to numpy for matplotlib
+                img = tensor[i].permute(1, 2, 0).cpu().numpy()
+                ax.imshow(img)
+                ax.axis("off")
+            else:
+                # Hide unused subplots in grid
+                ax.axis("off")
+        plt.tight_layout()
+        plt.show()
+
+    for i in range(len(dataset)):  # iterate over slides
+        patch_generator = dataset.get_patch_generator(i)
+        patches = []
+        for batch in patch_generator:
+            print(batch["slide_id"])
+            print(batch["patch"].shape)
+            print(batch["label"])
+            patches.append(batch["patch"])
+            if len(patches) == 16:
+                break
+        plot_random_samples_from_tensor(torch.stack(patches), 16)

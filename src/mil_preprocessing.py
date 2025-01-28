@@ -1,79 +1,89 @@
 import os
-import pandas as pd
-import numpy as np
+import sys
 import torch
 from torch.utils.data import Dataset, DataLoader
-import torchvision.transforms
-import openslide
 import h5py
 from tqdm import tqdm
+import logging
 
 from mil_datasets import PatchImageDataset
 
+#TODO: patch metadata is available from PatchImageDataset, and can be used to pair the embedding to its original patch
 
 def precompute_embeddings(
         root_dir,
         patch_size,
         level,
-        encoder_file,
+        encoder,
+        encoder_dir,
         batch_size=32,
+        device=None,
+        auto_skip=False,
+        logger=None,
 ):
+
+    if device is None:
+        device = torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
+
+    output_path = os.path.join(root_dir, "embeddings", encoder_dir)
+    if not os.path.exists(output_path):
+        os.mkdir(output_path)
+    if logger is None:
+        logger = logging.getLogger(__name__)
+        logger.setLevel(logging.INFO)
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setLevel(logging.INFO)
+        formatter = logging.Formatter('[%(asctime)s][%(levelname)s] %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+
+    logger.info(f"Preparing dataset... Root: {root_dir}, Patch Size: {patch_size}, Level: {level}")
     dataset = PatchImageDataset(
         root_dir=root_dir,
         patch_size=patch_size,
         level=level,
     )
-    dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
 
-    if not os.path.exists(os.path.join(root_dir, "embeddings")):
-        os.mkdir(os.path.join(root_dir, "embeddings"))
-
-    device = torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
-
-    # encoder
-    # -- a checkpoint .ckpt
-    # -- a pytorch model .pth
-    assert os.path.exists(encoder_file)
-    # TODO: this should be generic. We can have torch, lightning, or hugging face models...
-    from models import Backbone
-    encoder = Backbone.load_from_checkpoint(encoder_file)
-    encoder.eval()
     encoder = encoder.to(device)
 
-    pbar = tqdm(desc="Computing embeddings...", total=len(dataset), leave=False)
-    for batch in dataloader:
-        slide_id = batch["slide_id"]
-        patches = batch["patches"]
+    logger.info(f"Computing embeddings...")
+    count = 0
+    for i in range(len(dataset)):  # iterate over slides
+        slide_id = dataset.get_slide_id(i)
+        count += 1
+        if auto_skip and os.path.exists(os.path.join(output_path, f"{slide_id}.pt")):
+            logger.info(f"Embeddings for {slide_id} are already present in {output_path},"
+                        f" skipping... ({count}/{len(dataset)}) ...")
+            continue
+        else:
+            logger.info(f"Processing slide {slide_id} ({count}/{len(dataset)}) ...")
 
-        num_iter = len(patches) // batch_size
-        remainder = len(patches) % batch_size
+        patch_generator = dataset.get_patch_generator(i)
+        buffer = []
         embeddings = []
-        pbar.set_postfix(slide_id=slide_id, step="encoding")
-        for i in range(num_iter):
-            patch_batch = patches[i*batch_size:(i+1)*batch_size]
-            patch_batch = patch_batch.to(device)
-            with torch.no_grad():
-                preprocessed = encoder.preprocessor(patch_batch)
-                batch_embedding = encoder.backbone(preprocessed)
-            embeddings.append(batch_embedding.cpu().numpy().squeeze())
-        if remainder > 0:
-            patch_batch = patches[num_iter*batch_size:]
-            patch_batch = patch_batch.to(device)
-            with torch.no_grad():
-                preprocessed = encoder.preprocessor(patch_batch)
-                batch_embedding = encoder.backbone(preprocessed)
-            embeddings.append(batch_embedding.cpu().numpy().squeeze())
-        del patches
-        pbar.set_postfix(slide_id=slide_id, step="saving")
-        embeddings = np.stack(embeddings)
-        with h5py.File(os.path.join(root_dir, "embeddings", f"{slide_id}.h5"), "w") as f:
-            _ = f.create_dataset("embeddings", data=embeddings)
-            h5py_patch_metadata_dataset = f.create_dataset("patch_metadata",
-                                                           data=batch["patch_metadata"]["patch_coords"])
-            h5py_patch_metadata_dataset.attrs["patch_size"] = batch["patch_metadata"]["patch_size"]
-            h5py_patch_metadata_dataset.attrs["level"] = batch["patch_metadata"]["level"]
-        pbar.update()
+        for patch in patch_generator:  # iterate over patches
+            buffer.append(patch["patch"])
 
+            if len(buffer) == batch_size:
+                batch = torch.stack(buffer)
+                batch = batch.to(device)
+                with torch.no_grad():
+                    batch_embedding = encoder(batch)
+                embeddings.append(batch_embedding)
+                buffer.clear()
+
+        if len(buffer) > 0:
+            batch = torch.stack(buffer)
+            batch = batch.to(device)
+            with torch.no_grad():
+                batch_embedding = encoder(batch)
+            embeddings.append(batch_embedding)
+            buffer.clear()
+
+        embeddings = torch.cat(embeddings, dim=0)
+        logger.info(f"Saving embeddings at {os.path.join(output_path, f'{slide_id}.pt')}...")
+        torch.save(embeddings, os.path.join(output_path, f"{slide_id}.pt"))
+        del embeddings  # free some space before next iter
 
 
 
