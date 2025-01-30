@@ -19,7 +19,7 @@ args = parser.parse_args()
 if args.encoder == "resnet34":
     from torchvision import models
     encoder = models.resnet34(weights=models.ResNet34_Weights.DEFAULT)
-    encoder = torch.nn.Sequential(*list(encoder.children())[:-1])
+    encoder = torch.nn.Se#quential(*list(encoder.children())[:-1])
     encoder.eval()
 else:
     raise NotImplementedError(args.encoder)
