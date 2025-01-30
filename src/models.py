@@ -137,7 +137,8 @@ class ABMIL(L.LightningModule):
         if x.shape == 5:
             x = x[:, :, :, 0, 0]  # this should not be here! -.-
         if x.shape[1] > 5000:     # randomly sample if too many patches!
-            x = torch.randperm(x.shape[1])[:, :5000, :]
+            sample = torch.randperm(x.shape[1])[:5000]
+            x = x[:, sample]
         attn_output, _ = self.multihead_attention(x, x, x)  # self-attention
         x_weighted = x * attn_output  # (batch, instances, hidden)
         agg = x_weighted.sum(dim=1)  # (batch, instances, hidden) -> (batch, hidden)
@@ -158,7 +159,8 @@ class ABMIL(L.LightningModule):
         if x.shape == 5:
             x = x[:, :, :, 0, 0]  # this should not be here! -.-
         if x.shape[1] > 5000:  # randomly sample if too many patches!
-            x = torch.randperm(x.shape[1])[:, :5000, :]
+            sample = torch.randperm(x.shape[1])[:5000]
+            x = x[:, sample]
         y = train_batch["label"]
 
         attn_output, _ = self.multihead_attention(x, x, x)  # self-attention
@@ -190,7 +192,8 @@ class ABMIL(L.LightningModule):
         if x.shape == 5:
             x = x[:, :, :, 0, 0]  # this should not be here! -.-
         if x.shape[1] > 5000:     # randomly sample if too many patches!
-            x = torch.randperm(x.shape[1])[:, :5000, :]
+            sample = torch.randperm(x.shape[1])[:5000]
+            x = x[:, sample]
         y = val_batch["label"]
 
         attn_output, _ = self.multihead_attention(x, x, x)  # self-attention
@@ -221,7 +224,8 @@ class ABMIL(L.LightningModule):
         if x.shape == 5:
             x = x[:, :, :, 0, 0]  # this should not be here! -.-
         if x.shape[1] > 5000:     # randomly sample if too many patches!
-            x = torch.randperm(x.shape[1])[:, :5000, :]
+            sample = torch.randperm(x.shape[1])[:5000]
+            x = x[:, sample]
         y = test_step["label"]
 
         attn_output, _ = self.multihead_attention(x, x, x)  # self-attention
