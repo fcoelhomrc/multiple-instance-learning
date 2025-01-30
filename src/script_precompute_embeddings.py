@@ -21,6 +21,11 @@ if args.encoder == "resnet34":
     encoder = models.resnet34(weights=models.ResNet34_Weights.DEFAULT)
     encoder = torch.nn.Sequential(*list(encoder.children())[:-1])
     encoder.eval()
+elif args.encoder == "resnet50":
+    from torchvision import models
+    encoder = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
+    encoder = torch.nn.Sequential(*list(encoder.children())[:-1])
+    encoder.eval()
 else:
     raise NotImplementedError(args.encoder)
 
