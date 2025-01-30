@@ -9,6 +9,9 @@ import lightning as L
 
 
 # fully-supervised fine-tuning
+# @feature Need to implement test_step
+# @bug Custom loss is not doing anything because the code uses cross_entropy explicitly instead of
+# the attribute self.loss_function
 class Backbone(L.LightningModule):
 
     def __init__(self, n_classes, user_parameters):
@@ -131,7 +134,10 @@ class ABMIL(L.LightningModule):
 
     def forward(self, batch):
         x = batch["embedding"]
-        x = x[:, :, :, 0, 0]  # this should not be here! -.-
+        if x.shape == 5:
+            x = x[:, :, :, 0, 0]  # this should not be here! -.-
+        if x.shape[1] > 5000:     # randomly sample if too many patches!
+            x = torch.ranperm(x.shape[1])[:5000]
         attn_output, _ = self.multihead_attention(x, x, x)  # self-attention
         x_weighted = x * attn_output  # (batch, instances, hidden)
         agg = x_weighted.sum(dim=1)  # (batch, instances, hidden) -> (batch, hidden)
@@ -149,7 +155,10 @@ class ABMIL(L.LightningModule):
 
     def training_step(self, train_batch, batch_idx):
         x = train_batch["embedding"]
-        x = x[:, :, :, 0, 0]  # this should not be here! -.-
+        if x.shape == 5:
+            x = x[:, :, :, 0, 0]  # this should not be here! -.-
+        if x.shape[1] > 5000:  # randomly sample if too many patches!
+            x = torch.ranperm(x.shape[1])[:5000]
         y = train_batch["label"]
 
         attn_output, _ = self.multihead_attention(x, x, x)  # self-attention
@@ -178,7 +187,10 @@ class ABMIL(L.LightningModule):
 
     def validation_step(self, val_batch, batch_idx):
         x = val_batch["embedding"]
-        x = x[:, :, :, 0, 0]  # this should not be here! -.-
+        if x.shape == 5:
+            x = x[:, :, :, 0, 0]  # this should not be here! -.-
+        if x.shape[1] > 5000:     # randomly sample if too many patches!
+            x = torch.ranperm(x.shape[1])[:5000]
         y = val_batch["label"]
 
         attn_output, _ = self.multihead_attention(x, x, x)  # self-attention
@@ -206,7 +218,10 @@ class ABMIL(L.LightningModule):
 
     def test_step(self, test_step, batch_idx):
         x = test_step["embedding"]
-        x = x[:, :, :, 0, 0]  # this should not be here! -.-
+        if x.shape == 5:
+            x = x[:, :, :, 0, 0]  # this should not be here! -.-
+        if x.shape[1] > 5000:     # randomly sample if too many patches!
+            x = torch.ranperm(x.shape[1])[:5000]
         y = test_step["label"]
 
         attn_output, _ = self.multihead_attention(x, x, x)  # self-attention
